@@ -54,6 +54,7 @@ lazy_static! {
         let mut tasks = [TaskControlBlock {
             task_cx: TaskContext::zero_init(),
             task_status: TaskStatus::UnInit,
+            task_syscall_records: [0; 512],
         }; MAX_APP_NUM];
         for (i, task) in tasks.iter_mut().enumerate() {
             task.task_cx = TaskContext::goto_restore(init_app_cx(i));
@@ -135,6 +136,23 @@ impl TaskManager {
             panic!("All applications completed!");
         }
     }
+
+    /// Recored the syscall in Task Manager
+    fn recored_syscall(&self, syscall_id: usize) {
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].task_syscall_records[syscall_id] += 1;
+        drop(inner);
+    }
+
+    /// Get the record of syscall in Task Manager
+    fn get_syscall_record(&self, syscall_id: usize) -> isize {
+        let inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        let count = inner.tasks[current].task_syscall_records[syscall_id];
+        drop(inner);
+        count
+    }
 }
 
 /// Run the first task in task list.
@@ -168,4 +186,14 @@ pub fn suspend_current_and_run_next() {
 pub fn exit_current_and_run_next() {
     mark_current_exited();
     run_next_task();
+}
+
+/// Recored a syscall
+pub fn recored_syscall(syscall_id: usize) {
+    TASK_MANAGER.recored_syscall(syscall_id);
+}
+
+/// Return the count of syscall id
+pub fn get_syscall_record(syscall_id: usize) -> isize {
+    TASK_MANAGER.get_syscall_record(syscall_id)
 }
