@@ -184,9 +184,9 @@ impl TaskManager {
         let mut vpn = start_va.floor();
         let end_vpn = end_va.ceil();
         while vpn < end_vpn {
-            if task.memory_set.translate(vpn).is_some() {
+            if let Some(pte) = task.memory_set.translate(vpn) {
                 // 页冲突
-                return -1;
+                if pte.is_valid() {return -1};
             }
             vpn.0 += 1
         }

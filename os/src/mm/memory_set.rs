@@ -76,7 +76,6 @@ impl MemorySet {
         ) {
             let mut area = self.areas.swap_remove(idx);
             area.unmap(&mut self.page_table);
-            self.areas.remove(idx);
             0
         } else {
             -1

@@ -98,16 +98,22 @@ pub fn sys_trace(trace_request: usize, id: usize, data: usize) -> isize {
 }
 
 // YOUR JOB: Implement mmap.
-pub fn sys_mmap(start: usize, len: usize, port: usize) -> isize {
+pub fn sys_mmap(start: usize, len: usize, prot: usize) -> isize {
     trace!("kernel: sys_mmap");
     let mut map_perm = MapPermission::U;
-    if (port & 0x1) != 0 {
+    if (prot & 0x7) == 0 {
+        return -1;
+    }
+    if (prot & (!0x7)) != 0 {
+        return -1;
+    }
+    if (prot & 0x1) != 0 {
         map_perm |= MapPermission::R;
     }
-    if (port & 0x2) != 0 {
+    if (prot & 0x2) != 0 {
         map_perm |= MapPermission::W;
     }
-    if (port & 0x4) != 0 {
+    if (prot & 0x4) != 0 {
         map_perm |= MapPermission::X;
     }
     mmap(VirtAddr::from(start), VirtAddr::from(start+len), map_perm)
