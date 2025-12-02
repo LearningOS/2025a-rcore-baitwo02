@@ -15,6 +15,7 @@ mod switch;
 mod task;
 
 use crate::loader::{get_app_data, get_num_app};
+use crate::mm::{MapPermission, VirtAddr};
 use crate::sync::UPSafeCell;
 use crate::trap::TrapContext;
 use alloc::vec::Vec;
@@ -116,7 +117,7 @@ impl TaskManager {
 
     /// Get the current 'Running' task's token.
     fn get_current_token(&self) -> usize {
-        let inner = self.inner.exclusive_access();
+        let inner: core::cell::RefMut<'_, TaskManagerInner> = self.inner.exclusive_access();
         inner.tasks[inner.current_task].get_user_token()
     }
 
@@ -152,6 +153,67 @@ impl TaskManager {
         } else {
             panic!("All applications completed!");
         }
+    }
+
+    /// Recored the syscall in Task Manager
+    fn recored_syscall(&self, syscall_id: usize) {
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].task_syscall_records[syscall_id] += 1;
+        drop(inner);
+    }
+
+    /// Get the record of syscall in Task Manager
+    fn get_syscall_record(&self, syscall_id: usize) -> isize {
+        let inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        let count = inner.tasks[current].task_syscall_records[syscall_id];
+        drop(inner);
+        count
+    }
+
+    /// Impl mmap
+    fn mmap(&self, start_va: VirtAddr, end_va: VirtAddr, perm: MapPermission) -> isize {
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        let task = &mut inner.tasks[current];
+        if start_va.page_offset() != 0 {
+            println!("Page not aligned!");
+            return -1;
+        }
+        let mut vpn = start_va.floor();
+        let end_vpn = end_va.ceil();
+        while vpn < end_vpn {
+            if task.memory_set.translate(vpn).is_some() {
+                // 页冲突
+                return -1;
+            }
+            vpn.0 += 1
+        }
+        task.memory_set.insert_framed_area(start_va, end_va, perm);
+        drop(inner);
+        0
+    }
+
+    /// Impl munmap
+    fn munmap(&self, start_va: VirtAddr, end_va: VirtAddr) -> isize {
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        let task = &mut inner.tasks[current];
+        if start_va.page_offset() != 0 {
+            // 未按页对齐
+            return -1;
+        }
+        let mut vpn = start_va.floor();
+        let end_vpn = end_va.ceil();
+        while vpn < end_vpn {
+            if task.memory_set.translate(vpn).is_none() {
+                // 页不存在
+                return -1;
+            }
+            vpn.0 += 1
+        }
+        task.memory_set.unmap_area(start_va, end_va)
     }
 }
 
@@ -201,4 +263,24 @@ pub fn current_trap_cx() -> &'static mut TrapContext {
 /// Change the current 'Running' task's program break
 pub fn change_program_brk(size: i32) -> Option<usize> {
     TASK_MANAGER.change_current_program_brk(size)
+}
+
+/// Recored a syscall
+pub fn recored_syscall(syscall_id: usize) {
+    TASK_MANAGER.recored_syscall(syscall_id);
+}
+
+/// Return the count of syscall id
+pub fn get_syscall_record(syscall_id: usize) -> isize {
+    TASK_MANAGER.get_syscall_record(syscall_id)
+}
+
+/// Export mmap
+pub fn mmap(start_va: VirtAddr, end_va: VirtAddr, perm: MapPermission) -> isize {
+    TASK_MANAGER.mmap(start_va, end_va, perm)
+}
+
+/// Export munmap
+pub fn munmap(start_va: VirtAddr, end_va: VirtAddr) -> isize {
+    TASK_MANAGER.munmap(start_va, end_va)
 }

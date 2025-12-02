@@ -63,6 +63,26 @@ impl MemorySet {
             None,
         );
     }
+
+    /// Unmap a area in memory set
+    pub fn unmap_area(&mut self, start_va: VirtAddr, end_va: VirtAddr) -> isize {
+        let start_vpn = start_va.floor();
+        let end_vpn = end_va.ceil();
+        if let Some(idx) = self.areas
+        .iter()
+        .position(
+            |area| 
+            area.vpn_range.get_start() == start_vpn && area.vpn_range.get_end() == end_vpn
+        ) {
+            let mut area = self.areas.swap_remove(idx);
+            area.unmap(&mut self.page_table);
+            self.areas.remove(idx);
+            0
+        } else {
+            -1
+        }
+    }
+
     fn push(&mut self, mut map_area: MapArea, data: Option<&[u8]>) {
         map_area.map(&mut self.page_table);
         if let Some(data) = data {
@@ -245,7 +265,7 @@ impl MemorySet {
             true
         } else {
             false
-        }
+        } 
     }
 
     /// append the area to new_end
