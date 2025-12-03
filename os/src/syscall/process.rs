@@ -68,8 +68,8 @@ pub fn sys_trace(trace_request: usize, id: usize, data: usize) -> isize {
                 Some(pte) => {
                     if pte.user() && pte.readable() {
                         let offset = va.page_offset();
-                        let page_array = pte.ppn().get_bytes_array();
-                        page_array[offset] as isize
+                        let bytes = pte.ppn().get_bytes_array();
+                        bytes[offset] as isize
                     } else {
                         // the page is not readable
                         -1
