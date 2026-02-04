@@ -1,13 +1,14 @@
 //! Types related to task management & Functions for completely changing TCB
 use super::TaskContext;
 use super::{kstack_alloc, pid_alloc, KernelStack, PidHandle};
-use crate::config::TRAP_CONTEXT_BASE;
+use crate::config::{BIG_STRIDE, TRAP_CONTEXT_BASE};
 use crate::mm::{MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE};
 use crate::sync::UPSafeCell;
 use crate::trap::{trap_handler, TrapContext};
 use alloc::sync::{Arc, Weak};
 use alloc::vec::Vec;
 use core::cell::RefMut;
+use core::cmp::Ordering;
 
 /// Task control block structure
 ///
@@ -68,6 +69,33 @@ pub struct TaskControlBlockInner {
 
     /// Program break
     pub program_brk: usize,
+
+    /// Task stride used for schedule
+    pub stride: Stride,
+
+    /// Task priority
+    pub priority: isize,
+}
+
+impl Ord for TaskControlBlock {
+    fn cmp(&self, other: &Self) -> Ordering {
+        let self_stride = self.inner_exclusive_access().stride.clone();
+        let other_stride = other.inner_exclusive_access().stride.clone();
+        self_stride.partial_cmp(&other_stride).unwrap()
+    }
+}
+
+impl PartialOrd for TaskControlBlock {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Eq for TaskControlBlock { }
+impl PartialEq for TaskControlBlock {
+    fn eq(&self, other: &Self) -> bool {
+        self.pid.0 == other.pid.0
+    }
 }
 
 impl TaskControlBlockInner {
@@ -118,6 +146,8 @@ impl TaskControlBlock {
                     exit_code: 0,
                     heap_bottom: user_sp,
                     program_brk: user_sp,
+                    stride: Stride(0),
+                    priority: 5,
                 })
             },
         };
@@ -191,6 +221,8 @@ impl TaskControlBlock {
                     exit_code: 0,
                     heap_bottom: parent_inner.heap_bottom,
                     program_brk: parent_inner.program_brk,
+                    stride: parent_inner.stride.clone(),
+                    priority: parent_inner.priority,
                 })
             },
         });
@@ -198,12 +230,31 @@ impl TaskControlBlock {
         parent_inner.children.push(task_control_block.clone());
         // modify kernel_sp in trap_cx
         // **** access child PCB exclusively
-        let trap_cx = task_control_block.inner_exclusive_access().get_trap_cx();
+        let trap_cx: &mut TrapContext = task_control_block.inner_exclusive_access().get_trap_cx();
         trap_cx.kernel_sp = kernel_stack_top;
         // return
         task_control_block
         // **** release child PCB
         // ---- release parent PCB
+    }
+
+    /// parent process spawn the child process
+    pub fn spawn(self: &Arc<Self>, elf_data: &[u8]) -> Arc<Self> {
+        // {{{ 构造 taskblock
+        let child_task = Arc::new(TaskControlBlock::new(elf_data));
+        // }}} 构造 taskblock
+
+        // {{{ 建立父子关系
+        let mut child_inner = child_task.inner_exclusive_access();
+        child_inner.parent = Some(Arc::downgrade(self));
+        drop(child_inner);
+
+        let mut parent_inner = self.inner_exclusive_access();
+        parent_inner.children.push(child_task.clone());
+        drop(parent_inner);
+        // }}} 建立父子关系
+
+        child_task
     }
 
     /// get pid of process
@@ -236,6 +287,20 @@ impl TaskControlBlock {
             None
         }
     }
+
+    /// change the priority of task
+    pub fn set_priority(&self, priority: isize) -> isize {
+        let mut inner = self.inner_exclusive_access();
+        inner.priority = priority;
+        drop(inner);
+        priority
+    }
+
+    /// update the stride value
+    pub fn update_stride(&self) {
+        let mut inner = self.inner_exclusive_access();
+        inner.stride.0 += BIG_STRIDE / inner.priority as u8;
+    }
 }
 
 #[derive(Copy, Clone, PartialEq)]
@@ -249,4 +314,34 @@ pub enum TaskStatus {
     Running,
     /// exited
     Zombie,
+}
+
+/// stride: u8
+#[derive(Clone)]
+pub struct Stride(u8);
+
+impl PartialOrd for Stride {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        let diff = if self.0 >= other.0 {
+            (self.0 - other.0) as u8
+        } else {
+            (self.0 + BIG_STRIDE - other.0) as u8
+        };
+        
+        if diff == 0 {
+            Some(Ordering::Equal)
+        } else if diff > BIG_STRIDE / 2 {
+            // 跨越半圈，self在other的"后面"（即self < other）
+            Some(Ordering::Less)
+        } else {
+            // 在半圈内，self在other的"前面"（即self > other）
+            Some(Ordering::Greater)
+        }
+    }
+}
+
+impl PartialEq for Stride {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
 }

@@ -1,0 +1,29 @@
+// 针对当前文件夹的设置
+//
+// 若需查看全部可覆盖设置与说明，请访问：https://zed.dev/docs/configuring-zed#settings-files
+{
+  "lsp": {
+    "rust-analyzer": {
+      "initialization_options": {
+        // 开启更多不依赖 cargo 的诊断（可能出现误报，可按名称关闭）
+        "diagnostics": {
+          "experimental": {
+            "enable": true
+          }
+        },
+        // 完全禁用保存时检查（忽略下方所有 cargo/check 设置）
+        "checkOnSave": false,
+        // 将 cargo 目标与 no_std 的 RISC-V 构建对齐（与 .vscode/settings.json 保持一致）
+        "cargo": {
+          "allTargets": false,
+          "target": "riscv64gc-unknown-none-elf"
+        },
+        // 使用 `-p` 取代 `--workspace` 执行 cargo check
+        "check": {
+          // 仅检查当前包，避免扫描整个工作区
+          "workspace": false
+        }
+      }
+    }
+  }
+}

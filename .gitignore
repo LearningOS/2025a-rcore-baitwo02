@@ -2,6 +2,7 @@
 .merge_chain_state
 !.github/*
 !.vscode/settings.json
+!.zed/settings.json
 .idea
 Cargo.lock
 target
@@ -20,3 +21,5 @@ pushall.sh
 ci-user/
 os/vendor/
 user/
+
+AGENTS.md

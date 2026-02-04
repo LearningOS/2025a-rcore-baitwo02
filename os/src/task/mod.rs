@@ -40,6 +40,9 @@ pub fn suspend_current_and_run_next() {
     // There must be an application running.
     let task = take_current_task().unwrap();
 
+    // add the stride value of the task
+    task.update_stride();
+
     // ---- access current TCB exclusively
     let mut task_inner = task.inner_exclusive_access();
     let task_cx_ptr = &mut task_inner.task_cx as *mut TaskContext;

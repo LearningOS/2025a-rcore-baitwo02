@@ -60,6 +60,21 @@ impl MemorySet {
             None,
         );
     }
+    /// Unmap a area in memory set
+    pub fn unmap_area(&mut self, start_vpn: VirtPageNum, end_vpn: VirtPageNum) -> isize {
+        if let Some(idx) = self.areas
+        .iter()
+        .position(
+            |area| 
+            area.vpn_range.get_start() == start_vpn && area.vpn_range.get_end() == end_vpn
+        ) {
+            let mut area = self.areas.swap_remove(idx);
+            area.unmap(&mut self.page_table);
+            0
+        } else {
+            -1
+        }
+    }
     /// remove a area
     pub fn remove_area_with_start_vpn(&mut self, start_vpn: VirtPageNum) {
         if let Some((idx, area)) = self
