@@ -19,3 +19,6 @@ pushall.sh
 ci-user/
 user/
 os/vendor/
+AGENTS.md
+EXERCISES.md
+DOC.md
